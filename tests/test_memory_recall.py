@@ -1,6 +1,4 @@
-import features
-import core
-import memory
+from hope import features, core, memory
 import os
 
 # Mock TTS

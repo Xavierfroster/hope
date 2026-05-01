@@ -2,11 +2,13 @@ import sqlite3
 import datetime
 import os
 
-DB_PATH = "learning/hope_memory.db"
+PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+DB_PATH = os.path.join(PROJECT_ROOT, "learning", "hope_memory.db")
 
 def init_db():
-    if not os.path.exists("learning"):
-        os.makedirs("learning")
+    learning_dir = os.path.join(PROJECT_ROOT, "learning")
+    if not os.path.exists(learning_dir):
+        os.makedirs(learning_dir)
     
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()

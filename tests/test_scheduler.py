@@ -1,6 +1,4 @@
-import features
-import core
-import scheduler
+from hope import features, core, scheduler
 import time
 
 # Mock TTS

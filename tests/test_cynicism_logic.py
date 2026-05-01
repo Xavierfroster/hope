@@ -1,5 +1,4 @@
-import features
-import core
+from hope import features, core
 import os
 
 # Mock the speak function to prevent pyttsx3 hang

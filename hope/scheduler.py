@@ -1,7 +1,7 @@
 import threading
 import time
 import datetime
-from core import speak
+from .core import speak
 
 # Store tasks as (time, message, type)
 scheduled_tasks = []

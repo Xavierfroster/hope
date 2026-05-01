@@ -8,17 +8,17 @@ import socket
 import json
 import sys
 import difflib
-from core import speak, takecmd
-import memory
-import vision
-import scheduler
+from .core import speak, takecmd
+from . import memory
+from . import vision
+from . import scheduler
 import re
 
 # --- Memory and Learning System ---
 conversation_memory = []
 learned_phrases = {}
 learned_aliases = {}
-LEARNING_DIR = "learning"
+LEARNING_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "learning")
 LEARNING_FILE = os.path.join(LEARNING_DIR, "learned_phrases.json")
 ALIAS_FILE = os.path.join(LEARNING_DIR, "command_aliases.json")
 SETTINGS_FILE = os.path.join(LEARNING_DIR, "settings.json")

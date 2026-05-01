@@ -1,5 +1,5 @@
-from core import takecmd, speak
-from features import wishme, execute_query, check_internet
+from hope.core import takecmd, speak
+from hope.features import wishme, execute_query, check_internet
 
 if __name__ == "__main__":
     check_internet()

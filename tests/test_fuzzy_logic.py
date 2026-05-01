@@ -1,5 +1,4 @@
-import features
-import core
+from hope import features, core
 
 # Mock TTS
 def mock_speak(audio):
