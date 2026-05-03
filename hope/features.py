@@ -8,17 +8,21 @@ import socket
 import json
 import sys
 import difflib
-from .core import speak, takecmd
-from . import memory
-from . import vision
-from . import scheduler
+from hope.core import speak, takecmd
+from hope import memory
+from hope import vision
+from hope import scheduler
+from hope import diagnostics
+from hope import config
 import re
 
-# --- Memory and Learning System ---
+# --- Global State ---
+gui_instance = None
 conversation_memory = []
+last_phrases = [] # Track last used phrases to avoid repetition
 learned_phrases = {}
 learned_aliases = {}
-LEARNING_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "learning")
+LEARNING_DIR = config.LEARNING_DIR
 LEARNING_FILE = os.path.join(LEARNING_DIR, "learned_phrases.json")
 ALIAS_FILE = os.path.join(LEARNING_DIR, "command_aliases.json")
 SETTINGS_FILE = os.path.join(LEARNING_DIR, "settings.json")
@@ -26,7 +30,7 @@ SETTINGS_FILE = os.path.join(LEARNING_DIR, "settings.json")
 # Default Personality Settings
 personality_settings = {
     "tone": memory.get_preference("tone", "cynical"),
-    "humor_level": int(memory.get_preference("humor_level", 5)),
+    "humor_level": int(memory.get_preference("humor_level", config.HUMOR_LEVEL_DEFAULT)),
     "custom_cynical_prefixes": json.loads(memory.get_preference("custom_cynical_prefixes", "[]")),
     "custom_cynical_suffixes": json.loads(memory.get_preference("custom_cynical_suffixes", "[]")),
     "custom_empathy_prefixes": json.loads(memory.get_preference("custom_empathy_prefixes", "[]")),
@@ -65,10 +69,13 @@ def save_settings():
         else:
             memory.set_preference(key, value)
 
-def apply_personality(message):
+def apply_personality(message, query=""):
     import random
+    global last_phrases
+    
     tone = personality_settings.get("tone", "cynical")
     level = personality_settings.get("humor_level", 5)
+    query = query.lower() if query else ""
     
     # Cynical flourishes (Base + Custom)
     cynical_prefixes = [
@@ -81,7 +88,7 @@ def apply_personality(message):
         "Life? Don't talk to me about life. ", # Marvin
         "I have a million ideas. They all point to certain death. ", # Marvin
         "The universe is basically an animal. It grazes on the ordinary. " # Rick
-    ] + personality_settings.get("custom_cynical_prefixes", [])
+    ] + config.DARK_KNIGHT_PREFIXES + config.BRUCE_ALFRED_DIALOGUES + personality_settings.get("custom_cynical_prefixes", [])
     
     cynical_suffixes = [
         "... happy now?", "... don't expect a thank you note.",
@@ -90,15 +97,16 @@ def apply_personality(message):
         "... weddings are basically funerals with cake.", # Rick
         "... everyone lies.", # House
         "... I'm so embarrassed. I wish everybody else was dead." # Bender
-    ] + personality_settings.get("custom_cynical_suffixes", [])
+    ] + config.DARK_KNIGHT_SUFFIXES + personality_settings.get("custom_cynical_suffixes", [])
 
     # Empathy flourishes (Base + Custom)
     empathy_prefixes = [
-        "I'm here for you. ", "I hear you. ", "Be curious, not judgmental. ", # Ted Lasso
+        "I hear you. ", "I'm here for you. ", "I understand. ",
+        "Be curious, not judgmental. ", # Ted Lasso
         "Sometimes the best way to solve your own problems is to help someone else. ", # Uncle Iroh
         "In a dark place we find ourselves, and a little more knowledge lights our way. ", # Yoda
         "I can't carry it for you, but I can carry you. " # Samwise
-    ] + personality_settings.get("custom_empathy_prefixes", [])
+    ] + config.BRUCE_ALFRED_DIALOGUES + personality_settings.get("custom_empathy_prefixes", [])
 
     empathy_suffixes = [
         "... because you're worth it.", "... we're in this together.",
@@ -112,20 +120,57 @@ def apply_personality(message):
     
     final_message = message
     if random.randint(1, 100) <= chance:
+        # 1. Selection logic based on Context
         if tone == "cynical":
-            prefix = random.choice(cynical_prefixes)
-            suffix = random.choice(cynical_suffixes)
-            final_message = f"{prefix}{message} {suffix}"
-        elif tone == "empathy":
-            prefix = random.choice(empathy_prefixes)
-            suffix = random.choice(empathy_suffixes)
-            final_message = f"{prefix}{message} {suffix}"
+            # Contextual overrides
+            if any(k in query for k in ['pc', 'system', 'status', 'cpu', 'ram', 'battery']):
+                # Use Alfred/Bruce for system status
+                p_pool = config.BRUCE_ALFRED_DIALOGUES
+                s_pool = config.DARK_KNIGHT_SUFFIXES
+            elif any(k in query for k in ['search', 'wikipedia', 'who', 'what']):
+                # Use Yoda/Marvin for knowledge
+                p_pool = [p for p in cynical_prefixes if "idea" in p or "universe" in p]
+                s_pool = [s for s in cynical_suffixes if "lies" in s]
+            else:
+                p_pool = cynical_prefixes
+                s_pool = cynical_suffixes
+        else:
+            if any(k in query for k in ['search', 'who', 'what', 'know']):
+                p_pool = [p for p in empathy_prefixes if "knowledge" in p]
+                s_pool = [s for s in empathy_suffixes if "learned" in s]
+            else:
+                p_pool = empathy_prefixes
+                s_pool = empathy_suffixes
+
+        # 2. Prevent Repetition
+        # Filter out last 5 used phrases
+        p_filtered = [p for p in p_pool if p not in last_phrases]
+        s_filtered = [s for s in s_pool if s not in last_phrases]
+        
+        # Fallback if filtered list is empty
+        p_final = p_filtered if p_filtered else p_pool
+        s_final = s_filtered if s_filtered else s_pool
+        
+        prefix = random.choice(p_final)
+        suffix = random.choice(s_final)
+        
+        # Track usage
+        last_phrases.append(prefix)
+        last_phrases.append(suffix)
+        if len(last_phrases) > 10: last_phrases = last_phrases[-10:]
+        
+        final_message = f"{prefix}{message}{suffix}"
     
     return final_message
 
 def hope_speak(message, raw=False, query=None):
     """Wrapper for speak that applies personality and logs to DB"""
-    processed_msg = message if raw else apply_personality(message)
+    processed_msg = message if raw else apply_personality(message, query=query)
+    
+    # Update GUI if active
+    if gui_instance:
+        gui_instance.add_log(f"HOPE: {processed_msg}")
+        
     speak(processed_msg)
     
     # Log to long-term memory if query is provided
@@ -176,10 +221,22 @@ def wishme():
     else:
         greeting = "good evening"
 
-    full_message = f"{greeting}. I am a, Artificial Intellengence, You Can Call Me HOPE, Created by Mr. KUMAR DHAWALE. How May I Help You"
+    full_message = f"{greeting}. I am a, Artificial Intellengence, You Can Call Me {config.ASSISTANT_NAME}, Created by Mr. {config.MASTER_NAME}. How May I Help You"
     hope_speak(full_message)
 
 def execute_query(query):
+    # Phase 5: Passive System Health Check
+    stats = diagnostics.get_pc_stats()
+    # High Load Alert
+    if stats["cpu"] > config.CPU_THRESHOLD or stats["ram"] > config.RAM_THRESHOLD:
+        hope_speak(f"Sir, the core is at its limit. CPU is {stats['cpu']}% and RAM is {stats['ram']}%", query=query)
+    # Low Battery Alert
+    if isinstance(stats["battery"], int) and stats["battery"] < config.BATTERY_LOW_THRESHOLD and not stats["plugged"]:
+        hope_speak("Sir, I think I need some rest. I am going to sleep. Battery is below 20%.", query=query)
+    # Low Disk Alert
+    if stats["disk"] > config.DISK_THRESHOLD:
+        hope_speak(f"Sir, your disk is almost full. Only {stats['disk_free']} GB left. Clean up your mess.", query=query)
+
     # Phase 2: Fuzzy Command Correction
     core_commands = [
         "tell me about", "open youtube", "youtube search", "close", "minimise", 
@@ -228,11 +285,26 @@ def execute_query(query):
             # A more robust way:
             query = query + " " + best_match # Add the correct keyword to ensure it triggers
     
-    # Exit / Shutdown HOPE
-    exit_phrases = ['good night', 'switch to manual', 'bye', 'wrap it up']
-    if any(phrase in query for phrase in exit_phrases):
-        hope_speak("Goodbye Sir. Disconnecting HOPE and switching to manual mode.", query=query)
-        sys.exit()
+    # Exit / Shutdown HOPE (Strict protocols only)
+    if any(protocol in query for protocol in config.EXIT_PROTOCOLS):
+        hope_speak(f"{config.EXIT_PROTOCOLS[1].title()} initiated. Goodbye Sir. Disconnecting {config.ASSISTANT_NAME} and switching to manual mode.", query=query)
+        if gui_instance:
+            gui_instance.on_closing()
+        os._exit(0) # Force kill all threads including voice listener
+
+    # Application Closing Logic
+    close_triggers = ['close', 'shut up', 'dismissed']
+    if any(phrase in query for phrase in close_triggers):
+        hope_speak("Which program or app should I close?", raw=True)
+        app_to_close = takecmd().lower()
+        if app_to_close != "none":
+            hope_speak(f"Attempting to terminate {app_to_close}. Don't say I never did anything for you.", query=query)
+            # Try common extensions if user didn't specify
+            if not app_to_close.endswith(".exe"):
+                os.system(f"taskkill /f /im {app_to_close}.exe")
+            else:
+                os.system(f"taskkill /f /im {app_to_close}")
+        return
 
     # Log memory (Memory Feature)
     conversation_memory.append(query)
@@ -334,6 +406,12 @@ def execute_query(query):
             hope_speak("Failed to set alarm. Maybe time is just an illusion anyway.", query=query)
         return
 
+    # Diagnostics Command
+    if 'how is my pc doing' in query or 'system status' in query:
+        report = diagnostics.get_diagnostics_report()
+        hope_speak(report, query=query)
+        return
+
     # Long-Term Memory Recall Commands
     if 'how many times have i' in query:
         action = query.split('how many times have i')[1].strip()
@@ -433,6 +511,10 @@ def execute_query(query):
 
     # Phase 4: Camera Interface Vision Setup
     if 'open camera' in query or 'enable vision' in query:
+        if gui_instance:
+            hope_speak("Vision feed is already active on your dashboard, Sir. Try to keep up.", query=query)
+            return
+            
         hope_speak("Opening camera. Press Q to exit.")
         try:
             import cv2
@@ -472,11 +554,6 @@ def execute_query(query):
         search_term = query.replace("hope", "").replace("youtube search", "").strip()
         webbrowser.open('https://www.youtube.com/results?search_query=' + search_term)
         hope_speak(f"Searching YouTube for {search_term}", query=query)
-        return
-
-    elif 'close' in query:
-        hope_speak("closing application", query=query)
-        pyautogui.hotkey("alt", "f4")
         return
 
     elif 'minimise' in query:

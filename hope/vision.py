@@ -1,19 +1,16 @@
 import cv2
 import os
 import numpy as np
+from hope import config
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
-TRAINING_DIR = os.path.join(PROJECT_ROOT, "learning", "faces")
-HAAR_FILE = os.path.join(PROJECT_ROOT, "Resources", "haarcascade_frontalface_default.xml")
+TRAINING_DIR = os.path.join(config.LEARNING_DIR, "faces")
 
 def init_vision():
     if not os.path.exists(TRAINING_DIR):
         os.makedirs(TRAINING_DIR)
     
-    # Download Haar Cascade if missing (Optional logic, but usually it should be in Resources)
-    resources_dir = os.path.join(PROJECT_ROOT, "Resources")
-    if not os.path.exists(resources_dir):
-        os.makedirs(resources_dir)
+    if not os.path.exists(config.RESOURCES_DIR):
+        os.makedirs(config.RESOURCES_DIR)
 
 def enroll_face(name="User"):
     """Captures 30 photos of the user to 'learn' their face."""

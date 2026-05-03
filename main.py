@@ -1,5 +1,6 @@
 from hope.core import takecmd, speak
 from hope.features import wishme, execute_query, check_internet
+from hope import config
 
 if __name__ == "__main__":
     check_internet()
@@ -9,11 +10,11 @@ if __name__ == "__main__":
         if "none" in query:
             continue
             
-        # Phase 2: Wake Word Detection ("hey hope" or "hope")
-        if query.startswith("hey hope") or query.startswith("hope"):
+        # Phase 2: Wake Word Detection
+        if query.startswith(f"hey {config.WAKE_WORD}") or query.startswith(config.WAKE_WORD):
             speak("Yes sir?")
-            # Process the rest of the string if there are other commands in the same sentence
-            clean_query = query.replace("hey hope", "").replace("hope", "").strip()
+            # Process the rest of the string
+            clean_query = query.replace(f"hey {config.WAKE_WORD}", "").replace(config.WAKE_WORD, "").strip()
             
             if not clean_query:
                 # If they only said "hey hope", listen for the actual command
