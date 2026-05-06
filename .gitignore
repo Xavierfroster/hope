@@ -13,3 +13,7 @@ __pycache__/
 pdf_extract.py
 extracted_text.txt
 HOPE_PRD_FULL.pdf
+
+# Secure Credentials
+learning/credentials.json
+learning/token.json

@@ -1,7 +1,7 @@
 import cv2
 import os
 import numpy as np
-from hope import config
+from hope.configuration import settings as config
 
 TRAINING_DIR = os.path.join(config.LEARNING_DIR, "faces")
 

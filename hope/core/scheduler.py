@@ -1,7 +1,7 @@
 import threading
 import time
 import datetime
-from hope.core import speak
+from hope.core.engine import speak
 
 # Store tasks as (time, message, type)
 scheduled_tasks = []

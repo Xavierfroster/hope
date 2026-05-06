@@ -1,6 +1,25 @@
-from hope.core import takecmd, speak
+import sys
+import re
+import regex
+
+# --- Python 3.13 / System 're' Module Fix ---
+# Bypasses "Template compilation is not supported" error by using 'regex' library
+re.compile = regex.compile
+re.sub = regex.sub
+re.subn = regex.subn
+re.split = regex.split
+re.findall = regex.findall
+re.finditer = regex.finditer
+re.match = regex.match
+re.fullmatch = regex.fullmatch
+re.search = regex.search
+def _patched_compile_template(pattern, repl): return regex.compile(pattern)
+re._compile_template = _patched_compile_template
+# --------------------------------------------
+
+from hope.core.engine import takecmd, speak
 from hope.features import wishme, execute_query, check_internet
-from hope import config
+from hope.configuration import settings as config
 
 if __name__ == "__main__":
     check_internet()

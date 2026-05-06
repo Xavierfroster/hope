@@ -2,7 +2,7 @@ import customtkinter as ctk
 import cv2
 from PIL import Image, ImageTk
 import threading
-from hope import diagnostics
+from hope.system_stats import monitor as diagnostics
 import queue
 import os
 

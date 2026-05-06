@@ -1,6 +1,6 @@
 import psutil
 import time
-from hope import config
+from hope.configuration import settings as config
 
 def get_pc_stats():
     # CPU and RAM

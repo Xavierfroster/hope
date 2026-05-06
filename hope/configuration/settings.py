@@ -5,10 +5,12 @@ MASTER_NAME = "KUMAR DHAWALE"
 ASSISTANT_NAME = "HOPE"
 
 # --- File Paths ---
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LEARNING_DIR = os.path.join(PROJECT_ROOT, "learning")
 RESOURCES_DIR = os.path.join(PROJECT_ROOT, "Resources")
 DB_PATH = os.path.join(LEARNING_DIR, "hope_memory.db")
+GMAIL_CREDS = os.path.join(LEARNING_DIR, "credentials.json")
+GMAIL_TOKEN = os.path.join(LEARNING_DIR, "token.json")
 
 # --- Thresholds & Settings ---
 CPU_THRESHOLD = 80
@@ -17,6 +19,10 @@ DISK_THRESHOLD = 95
 BATTERY_LOW_THRESHOLD = 20
 HUMOR_LEVEL_DEFAULT = 5
 WAKE_WORD = "hope"
+
+# --- Credentials (Fill these in your local environment) ---
+EMAIL_USER = "youremail@gmail.com"
+EMAIL_PASS = "your-app-password" # Use App Password for Gmail
 
 # --- Secure Protocols ---
 EXIT_PROTOCOLS = ["switch to manual", "initiate protocol 100"]

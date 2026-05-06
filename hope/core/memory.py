@@ -1,7 +1,7 @@
 import sqlite3
 import datetime
 import os
-from hope import config
+from hope.configuration import settings as config
 
 def init_db():
     if not os.path.exists(config.LEARNING_DIR):
@@ -28,14 +28,20 @@ def init_db():
         )
     ''')
     
-    # Learned Data (replacing JSONs eventually)
+    # Contacts table for emails and whatsapp
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS knowledge (
-            trigger TEXT PRIMARY KEY,
-            response TEXT,
-            type TEXT -- 'phrase' or 'alias'
+        CREATE TABLE IF NOT EXISTS contacts (
+            name TEXT PRIMARY KEY,
+            email TEXT,
+            phone TEXT
         )
     ''')
+
+    # Ensure phone column exists for users upgrading from older versions
+    try:
+        cursor.execute("ALTER TABLE contacts ADD COLUMN phone TEXT")
+    except sqlite3.OperationalError:
+        pass # Column already exists
     
     conn.commit()
     conn.close()
@@ -87,6 +93,36 @@ def count_actions(keyword):
     count = cursor.fetchone()[0]
     conn.close()
     return count
+
+def save_contact(name, email):
+    conn = sqlite3.connect(config.DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO contacts (name, email) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET email=excluded.email", (name.lower(), email.lower()))
+    conn.commit()
+    conn.close()
+
+def get_contact(name):
+    conn = sqlite3.connect(config.DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT email FROM contacts WHERE name = ?", (name.lower(),))
+    result = cursor.fetchone()
+    conn.close()
+    return result[0] if result else None
+
+def save_phone(name, phone):
+    conn = sqlite3.connect(config.DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO contacts (name, phone) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET phone=excluded.phone", (name.lower(), phone))
+    conn.commit()
+    conn.close()
+
+def get_phone(name):
+    conn = sqlite3.connect(config.DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT phone FROM contacts WHERE name = ?", (name.lower(),))
+    result = cursor.fetchone()
+    conn.close()
+    return result[0] if result else None
 
 # Initialize on import
 init_db()
