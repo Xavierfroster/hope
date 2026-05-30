@@ -14,6 +14,7 @@ def mock_takecmd():
 core.speak = mock_speak
 features.speak = mock_speak
 features.takecmd = mock_takecmd
+features.personality_settings["system_alerts"] = True
 
 def simulate_user(query):
     print(f"\n--- USER SAYS: \"{query}\" ---")

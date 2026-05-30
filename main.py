@@ -1,6 +1,7 @@
 import sys
 import re
 import regex
+import time
 
 # --- Python 3.13 / System 're' Module Fix ---
 # Bypasses "Template compilation is not supported" error by using 'regex' library
@@ -23,6 +24,7 @@ from hope.configuration import settings as config
 
 if __name__ == "__main__":
     check_internet()
+    time.sleep(2) # Delay after starting before greeting
     wishme()
     while True:
         query = takecmd().lower()

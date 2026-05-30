@@ -8,6 +8,7 @@ def mock_speak(audio, query=None):
 
 core.speak = mock_speak
 features.speak = mock_speak
+features.personality_settings["system_alerts"] = True
 
 def run_test(command):
     print(f"\n[USER]: {command}")
