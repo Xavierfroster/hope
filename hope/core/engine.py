@@ -4,8 +4,31 @@ import random
 import json
 import os
 import time
+import winsound
 from hope.configuration import settings as config
 from hope.core import memory
+from hope.core.voice_effects import apply_optimus_effect
+
+# Load active voice type
+active_voice_type = memory.get_preference("voice_type", "default")
+# Load standby mode status
+standby_mode = memory.get_preference("standby_mode", "False") == "True"
+
+def update_voice_type(voice_type):
+    """Updates the voice type preference (default/optimus_prime) and persists it to the database."""
+    global active_voice_type
+    if voice_type in ["default", "optimus_prime"]:
+        active_voice_type = voice_type
+        memory.set_preference("voice_type", voice_type)
+        return True
+    return False
+
+def update_standby_mode(status):
+    """Updates the standby mode status persistently and dynamically."""
+    global standby_mode
+    standby_mode = status
+    memory.set_preference("standby_mode", str(status))
+    return True
 
 # --- Global State for Engine ---
 gui_instance = None
@@ -42,34 +65,81 @@ def update_system_alerts(status):
     memory.set_preference("system_alerts", str(status))
     return True
 
-# Global TTS Engine Initialization
-try:
-    tts_engine = pyttsx3.init('sapi5')
-    voices = tts_engine.getProperty("voices")
-    tts_engine.setProperty('voice', voices[0].id)
-except Exception as e:
-    print(f"TTS Initialization Error: {e}")
-    tts_engine = None
+import threading
+
+# Thread-local storage for SAPI5 TTS engines and a global lock to serialize speech
+_local_tts = threading.local()
+tts_lock = threading.Lock()
+
+def get_tts_engine():
+    """Initializes or retrieves a thread-local SAPI5 engine, completely avoiding Windows COM collisions."""
+    if not hasattr(_local_tts, "engine"):
+        try:
+            _local_tts.engine = pyttsx3.init('sapi5')
+            voices = _local_tts.engine.getProperty("voices")
+            _local_tts.engine.setProperty('voice', voices[0].id)
+        except Exception as e:
+            print(f"TTS Thread-Local Initialization Error: {e}")
+            _local_tts.engine = None
+    return _local_tts.engine
 
 def speak(audio):
+    if standby_mode:
+        print(f"HOPE [Silenced - Standby]: {audio}")
+        return
+        
     # Add a leading comma and small pause to fix truncation issues on some systems
     processed_audio = f", , {audio}"
     print(f"HOPE: {audio}")
     
-    if tts_engine:
-        try:
-            # Sync personality settings for speed if needed
-            # (Note: we use the rate set by the user or default)
-            # rate = tts_engine.getProperty('rate')
-            # tts_engine.setProperty('rate', int(rate * 1)) 
-            
-            tts_engine.say(processed_audio)
-            tts_engine.runAndWait()
-            time.sleep(2) # Delay after speaking
-        except Exception as e:
-            print(f"TTS Error: {e}")
-    else:
-        print("TTS Engine not available.")
+    with tts_lock:
+        engine_instance = get_tts_engine()
+        if engine_instance:
+            try:
+                if active_voice_type == "optimus_prime":
+                    # Optimus Prime Voice Process
+                    original_rate = engine_instance.getProperty('rate')
+                    # Set synthesized speed to fast (to compensate for resampling slow-down)
+                    engine_instance.setProperty('rate', 260)
+                    
+                    if not os.path.exists(config.RESOURCES_DIR):
+                        os.makedirs(config.RESOURCES_DIR)
+                        
+                    temp_raw = os.path.join(config.RESOURCES_DIR, "temp_raw.wav")
+                    temp_proc = os.path.join(config.RESOURCES_DIR, "temp_proc.wav")
+                    
+                    # Delete existing temp files
+                    for f in [temp_raw, temp_proc]:
+                        if os.path.exists(f):
+                            try:
+                                os.remove(f)
+                            except Exception:
+                                pass
+                    
+                    # Save TTS raw synthesis to temporary WAV
+                    engine_instance.save_to_file(processed_audio, temp_raw)
+                    engine_instance.runAndWait()
+                    
+                    # Restore original rate
+                    engine_instance.setProperty('rate', original_rate)
+                    
+                    # Apply Optimus Prime DSP effect
+                    if os.path.exists(temp_raw):
+                        apply_optimus_effect(temp_raw, temp_proc)
+                        
+                        # Play the mechanical voice
+                        if os.path.exists(temp_proc):
+                            winsound.PlaySound(temp_proc, winsound.SND_FILENAME)
+                            time.sleep(1) # Short delay
+                else:
+                    # Default SAPI5 Voice
+                    engine_instance.say(processed_audio)
+                    engine_instance.runAndWait()
+                    time.sleep(2) # Delay after speaking
+            except Exception as e:
+                print(f"TTS Error: {e}")
+        else:
+            print("TTS Engine not available.")
 
 def takecmd():
     r = sr.Recognizer()

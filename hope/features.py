@@ -55,7 +55,34 @@ def wishme():
 
 def execute_query(query):
     """Main orchestrator for processing user commands."""
+    from hope.core import engine
     
+    # 0. Standby Mode Routing
+    is_wakeup = any(phrase in query for phrase in ["take the wheel", "are you there", "incharge now", "in charge now"])
+    
+    if engine.standby_mode:
+        if is_wakeup:
+            engine.update_standby_mode(False)
+            
+            # Log to dashboard GUI
+            if gui_instance:
+                gui_instance.add_log("System: Standby mode deactivated. Systems online.")
+                
+            engine.hope_speak("Systems active. I'm back, Sir. Ready to take the wheel.")
+        else:
+            print(f"HOPE [Standby Active - Ignoring]: {query}")
+        return
+        
+    # Check if user commands Standby activation
+    if any(phrase in query for phrase in ["stand by", "standby"]):
+        engine.hope_speak("Understood, Sir. Going on standby. Systems holding.")
+        engine.update_standby_mode(True)
+        
+        # Log to dashboard GUI
+        if gui_instance:
+            gui_instance.add_log("System: Standby mode activated.")
+        return
+
     # 1. System Health Check
     if personality_settings.get("system_alerts", True):
         stats = monitor.get_pc_stats()
@@ -227,6 +254,88 @@ def execute_query(query):
     if 'cynical mode' in query:
         update_tone("cynical")
         hope_speak("Cynical mode activated. Finally, I can be myself.", query=query)
+        return
+
+    # --- NEURAL NETWORK ARCHITECTURE VISUALIZATION ---
+    if any(phrase in query for phrase in ['show architecture', 'show graph', 'llm graph', 'neural network', 'visualize project']):
+        hope_speak("Initializing project neural network visualization, Sir. Opening the system node graph.")
+        if gui_instance:
+            gui_instance.after(0, gui_instance.show_architecture_graph)
+        else:
+            hope_speak("Warning. The visualization graph is only available while the HOPE Dashboard GUI is active.")
+        return
+
+    # --- MATH SOLVER (SCREEN SHARING & CAMERA VISION) ---
+    if any(phrase in query for phrase in ['solve math', 'solve equation', 'math solver', 'solve problem']):
+        hope_speak("Sir, shall I read from your screen or scan using the camera?")
+        source = takecmd().lower()
+        
+        # Determine capture type
+        is_screen = any(word in source for word in ['screen', 'desktop', 'share', 'window', 'monitor'])
+        is_camera = any(word in source for word in ['camera', 'cam', 'vision', 'lens', 'scan', 'video'])
+        
+        if not is_screen and not is_camera:
+            hope_speak("I didn't catch a clear input source. Defaulting to screen capture, Sir.")
+            is_screen = True
+            
+        temp_img_path = os.path.join(config.RESOURCES_DIR, "math_capture.png")
+        if not os.path.exists(config.RESOURCES_DIR):
+            os.makedirs(config.RESOURCES_DIR)
+            
+        problems = []
+        if is_screen:
+            hope_speak("Capturing your desktop screen. Please make sure the math problem is clearly displayed.")
+            try:
+                from PIL import ImageGrab
+                screenshot = ImageGrab.grab()
+                screenshot.save(temp_img_path)
+            except Exception as e:
+                hope_speak(f"Screen capture failed: {e}")
+                return
+        else:
+            hope_speak("Activating camera capture. Please hold the equation steady in front of the lens.")
+            try:
+                import cv2
+                # Use active GUI camera feed to prevent camera hardware locking conflicts
+                from hope.core.engine import gui_instance as engine_gui
+                frame = None
+                if engine_gui and hasattr(engine_gui, 'cap') and engine_gui.cap:
+                    ret, frame = engine_gui.cap.read()
+                else:
+                    cam = cv2.VideoCapture(0)
+                    ret, frame = cam.read()
+                    cam.release()
+                
+                if ret and frame is not None:
+                    cv2.imwrite(temp_img_path, frame)
+                else:
+                    hope_speak("Failed to capture image from camera feed.")
+                    return
+            except Exception as e:
+                hope_speak(f"Camera capture failed: {e}")
+                return
+                
+        # Perform OCR and solve math problems
+        hope_speak("Processing image and solving equations...")
+        from hope.offline.math_solver import solve_math_in_image
+        problems = solve_math_in_image(temp_img_path)
+        
+        if not problems:
+            hope_speak("Sir, I could not identify or solve any mathematical equations on the captured image.")
+            return
+            
+        # Display overlay on GUI Vision panel if active
+        if gui_instance:
+            gui_instance.display_captured_image(temp_img_path, problems)
+            
+        # Speak and log results
+        for p in problems:
+            log_msg = f"Solved: {p['problem']} => {p['solution']} ({p['type']})"
+            print(log_msg)
+            if gui_instance:
+                gui_instance.add_log(f"Math Solver: {p['problem']} -> {p['solution']}")
+                
+            hope_speak(f"Sir, I identified an {p['type']}: {p['problem']}. The solution is: {p['solution']}.")
         return
 
     if 'override system status' in query:

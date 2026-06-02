@@ -22,7 +22,7 @@ re._compile_template = _patched_compile_template
 
 import os
 # Add project root to path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 try:
     from hope.communication import gmail_api

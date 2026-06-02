@@ -49,6 +49,22 @@ class HopeGUI(ctk.CTk):
         self.battery_label = ctk.CTkLabel(self.sidebar, text="Battery: 0%")
         self.battery_label.pack(pady=(20, 0))
 
+        # --- Voice Settings ---
+        self.voice_label = ctk.CTkLabel(self.sidebar, text="Voice Settings", font=ctk.CTkFont(size=13, weight="bold"))
+        self.voice_label.pack(pady=(30, 5))
+        
+        # Dynamically import engine to retrieve baseline active voice
+        import hope.core.engine as engine
+        initial_val = "Optimus Prime" if engine.active_voice_type == "optimus_prime" else "Default Voice"
+        
+        self.voice_menu = ctk.CTkOptionMenu(
+            self.sidebar, 
+            values=["Default Voice", "Optimus Prime"],
+            command=self.change_voice_mode
+        )
+        self.voice_menu.set(initial_val)
+        self.voice_menu.pack(pady=5, padx=15)
+
         # --- Main View (Vision) ---
         self.vision_frame = ctk.CTkFrame(self, corner_radius=10)
         self.vision_frame.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
@@ -95,12 +111,27 @@ class HopeGUI(ctk.CTk):
             self.log_text.configure(state="disabled")
         self.after(100, self.check_log_queue)
 
+    def show_architecture_graph(self):
+        """Displays the neural architecture network graph pop-up window."""
+        try:
+            from hope.gui.graph_visualization import ProjectGraphWindow
+            graph_win = ProjectGraphWindow(self)
+            self.add_log("System: Visualizing Neural Architecture Graph.")
+        except Exception as e:
+            print(f"Error opening architecture graph window: {e}")
+
     def send_query(self):
         query = self.query_entry.get()
         if query:
             self.query_entry.delete(0, "end")
             self.add_log(f"> {query}")
             threading.Thread(target=self.process_query_callback, args=(query,), daemon=True).start()
+
+    def change_voice_mode(self, val):
+        import hope.core.engine as engine
+        voice_type = "optimus_prime" if val == "Optimus Prime" else "default"
+        if engine.update_voice_type(voice_type):
+            self.add_log(f"System: Voice Mode changed to {val}")
 
     def start_diagnostics_loop(self):
         def update():
@@ -126,20 +157,54 @@ class HopeGUI(ctk.CTk):
 
     def start_vision_loop(self):
         self.cap = cv2.VideoCapture(0)
+        self.running_live_feed = True
         def update():
             while self.running:
-                ret, frame = self.cap.read()
-                if ret:
-                    # Convert to RGB for PIL
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    # Resize to fit frame
-                    img = Image.fromarray(frame)
-                    img = img.resize((600, 400))
-                    ctk_img = ctk.CTkImage(img, size=(600, 400))
-                    self.after(0, lambda: self.vision_label.configure(image=ctk_img))
+                if self.running_live_feed:
+                    ret, frame = self.cap.read()
+                    if ret:
+                        # Convert to RGB for PIL
+                        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        # Resize to fit frame
+                        img = Image.fromarray(frame)
+                        img = img.resize((600, 400))
+                        ctk_img = ctk.CTkImage(img, size=(600, 400))
+                        self.after(0, lambda: self.vision_label.configure(image=ctk_img))
                 threading.Event().wait(0.03) # ~30 FPS
         
         threading.Thread(target=update, daemon=True).start()
+
+    def display_captured_image(self, image_path, problems):
+        """Pauses live camera feed, draws solved mathematical equations on the image, and displays it in the GUI."""
+        try:
+            img = Image.open(image_path)
+            # Resize image to match vision label dimensions for crisp drawing
+            img = img.resize((600, 400))
+            
+            from PIL import ImageDraw
+            draw = ImageDraw.Draw(img)
+            y_offset = 20
+            
+            for p in problems:
+                text = f"SOLVED: {p['problem']} -> {p['solution']}"
+                # Render a semi-transparent black background strip for absolute text readability
+                draw.rectangle([10, y_offset - 2, 590, y_offset + 25], fill="black")
+                draw.text((18, y_offset + 3), text, fill="green")
+                y_offset += 38
+            
+            ctk_img = ctk.CTkImage(img, size=(600, 400))
+            self.running_live_feed = False
+            self.after(0, lambda: self.vision_label.configure(image=ctk_img))
+            
+            # Resume live camera feed automatically after 8 seconds
+            self.after(8000, self.resume_live_feed)
+        except Exception as e:
+            print(f"Error displaying captured image in GUI: {e}")
+            self.running_live_feed = True
+
+    def resume_live_feed(self):
+        """Resumes live webcam feed updating."""
+        self.running_live_feed = True
 
     def on_closing(self):
         self.running = False
