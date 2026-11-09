@@ -135,7 +135,7 @@ def speak(audio):
                     # Default SAPI5 Voice
                     engine_instance.say(processed_audio)
                     engine_instance.runAndWait()
-                    time.sleep(2) # Delay after speaking
+                time.sleep(0.3) # Minimal delay after speaking to open mic immediately
             except Exception as e:
                 print(f"TTS Error: {e}")
         else:
@@ -145,14 +145,15 @@ def takecmd():
     r = sr.Recognizer()
     with sr.Microphone() as source:
         print("listening.....")
-        r.pause_threshold = 0.5
+        r.pause_threshold = 0.8
+        r.adjust_for_ambient_noise(source, duration=0.2)
         audio = r.listen(source)
 
     try:
         print("WORKING ON IT")
         query = r.recognize_google(audio, language='en-in')
         print("user said:", query)
-        time.sleep(2) # Delay after receiving command before returning
+        time.sleep(0.3) # Minimal delay after receiving command
         return query.lower()
     except Exception:
         speak("say that again.....")
@@ -209,17 +210,25 @@ def hope_speak(message, raw=False, query=None):
     if query:
         memory.log_conversation(query, processed_msg)
 
-def confirm_action(prompt, query=None):
-    """Asks for confirmation before proceeding with an automation task."""
-    hope_speak(prompt, query=query)
-    response = takecmd().lower()
+def confirm_action(prompt, query=None, raw=False, max_retries=3):
+    """Asks for confirmation before proceeding with an automation task, supporting retries."""
+    affirmative_words = ['yes', 'yeah', 'yea', 'yep', 'yup', 'sure', 'go ahead', 'proceed', 'do it', 'start', 'ok', 'okay', 'correct', 'confirm', 'allow', 'accept']
+    negative_words = ['no', 'nope', 'nah', 'stop', 'abort', 'cancel', 'don\'t', 'decline', 'deny']
+
+    hope_speak(prompt, raw=raw, query=query)
     
-    if any(word in response for word in ['yes', 'go ahead', 'proceed', 'do it', 'yeah', 'sure']):
-        return True
-    
-    if any(word in response for word in ['stop', 'no', 'abort', 'cancel', 'don\'t']):
-        hope_speak("Task aborted. I'll just sit here and wait for you to change your mind.")
-        return False
+    for attempt in range(max_retries):
+        response = takecmd().lower()
         
-    hope_speak("I didn't catch a clear confirmation. Aborting the task for safety.")
+        if any(word in response for word in affirmative_words):
+            return True
+        
+        if any(word in response for word in negative_words):
+            hope_speak("Task aborted. Standing by.", raw=raw)
+            return False
+            
+        if attempt < max_retries - 1:
+            hope_speak("I didn't catch that. Please say yes to confirm or no to cancel.", raw=True)
+            
+    hope_speak("No clear confirmation received. Aborting task for safety.", raw=raw)
     return False

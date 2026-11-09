@@ -17,6 +17,23 @@ from hope.security import face_recognition
 # Global State
 gui_instance = None
 
+def normalize_location_aliases(text):
+    """Phonetic and STT alias normalizer to resolve misrecognized acronyms like CDAC."""
+    aliases = {
+        "see that": "cdac",
+        "seedex": "cdac",
+        "sea dac": "cdac",
+        "see dac": "cdac",
+        "c dac": "cdac",
+        "c-dac": "cdac",
+        "c.d.a.c": "cdac",
+        "sedac": "cdac",
+    }
+    normalized = text.lower()
+    for alias, replacement in aliases.items():
+        normalized = re.sub(rf'\b{re.escape(alias)}\b', replacement, normalized)
+    return normalized
+
 def check_internet():
     """Initializes basic services and checks connectivity."""
     from hope.core import scheduler
@@ -100,7 +117,7 @@ def execute_query(query):
         "volume down", "mute volume", "open camera", "enable vision",
         "switch to empathy mode", "switch to cynical mode", "humor level", "humour level",
         "what was my last command", "wrap it up", "read my emails", "whatsapp message",
-        "directions to", "where is", "override system status"
+        "directions to", "direction to", "directions", "direction", "where is", "override system status", "set my location to", "set location to"
     ]
     
     # Simple fuzzy logic (simplified for clarity)
@@ -160,23 +177,55 @@ def execute_query(query):
         browser.search_youtube(term)
         return
 
-    if 'directions to' in query:
-        # Improved extraction: remove everything before and including 'directions to'
-        dest = re.sub(r'.*directions to', '', query).strip()
-        hope_speak(f"Searching for {dest}...")
+    if any(phrase in query for phrase in ['set my location to', 'set location to', 'my location is']):
+        loc_str = re.sub(r'.*(set my location to|set location to|my location is)', '', query).strip()
+        if loc_str:
+            res = maps.set_user_location(loc_str)
+            if res:
+                lat, lon, readable = res
+                hope_speak(f"Location updated. Starting point set to {readable}.", query=query)
+            else:
+                hope_speak("I couldn't find that location to set as your starting point.", query=query)
+        else:
+            hope_speak("Please specify a valid location, Sir.", query=query)
+        return
+
+    if any(phrase in query for phrase in ['directions to', 'direction to', 'directions', 'direction']):
+        # Extraction: remove everything before and including 'directions to' or 'direction to'
+        dest = re.sub(r'.*directions?\s*to', '', query).strip()
+        dest = re.sub(r'^(directions?)\s*', '', dest).strip()
+
+        # If destination is missing, ask the user explicitly
+        if not dest:
+            hope_speak("Where would you like directions to, Sir?", raw=True)
+            dest = takecmd().lower()
+            if dest in ["none", ""]:
+                hope_speak("No destination specified. Navigation cancelled.", query=query)
+                return
+
+        # Apply phonetic/alias correction (e.g., 'see that' -> 'cdac', 'seedex' -> 'cdac')
+        dest = normalize_location_aliases(dest)
         
-        # Get coordinates
-        curr_loc = maps.get_current_location()
+        # 1. Ask permission for device location access to pinpoint exact location (clean intermediate prompt)
+        if confirm_action("Sir, may I access your device location services to pinpoint your exact current location?", raw=True):
+            hope_speak("Location access granted. Pinpointing your exact location...", raw=True)
+            curr_loc = maps.get_current_location()
+        else:
+            hope_speak("Location access declined. Using default starting location...", raw=True)
+            curr_loc = maps.get_current_location()
+
+        # 2. Search for destination (clean intermediate status)
+        hope_speak(f"Searching for {dest}...", raw=True)
         locations = maps.get_multiple_locations(dest)
         
         target_coords = None
         if len(locations) > 1:
-            hope_speak(f"Sir, I found several locations for {dest}. Which one do you mean?")
-            # Read out the first 3 options
+            hope_speak(f"Sir, I found several locations for {dest}. Which one do you mean?", raw=True)
+            # Read out the first 3 options cleanly
             for i, loc in enumerate(locations[:3]):
                 name_parts = loc['display_name'].split(',')
                 readable_name = f"{name_parts[0]}, {name_parts[1] if len(name_parts)>1 else ''}"
-                hope_speak(f"Option {i+1}: {readable_name}")
+                hope_speak(f"Option {i+1}: {readable_name}", raw=True)
             
             choice = takecmd().lower()
             if any(word in choice for word in ['one', '1', 'first']): 
@@ -189,24 +238,33 @@ def execute_query(query):
                 target_coords = (locations[2]['lat'], locations[2]['lon'])
                 dest = locations[2]['display_name']
             else:
-                hope_speak("I'll just use the most likely match.")
+                hope_speak("I'll just use the most likely match.", raw=True)
                 target_coords = (locations[0]['lat'], locations[0]['lon'])
                 dest = locations[0]['display_name']
         elif len(locations) == 1:
             target_coords = (locations[0]['lat'], locations[0]['lon'])
             dest = locations[0]['display_name']
 
+        origin_name = curr_loc[2] if curr_loc else None
+
+        # 3. Calculate distance & travel time for fastest route (clean intermediate readout)
         if curr_loc and target_coords:
             route = maps.get_route_info((curr_loc[0], curr_loc[1]), target_coords)
             if route:
                 dist, duration = route
-                hope_speak(f"Sir, {dest.split(',')[0]} is {dist} kilometers away. It should take you {duration} minutes from {curr_loc[2]}.")
+                hope_speak(f"Sir, {dest.split(',')[0]} is {dist} kilometers away via the fastest route. It will take approximately {duration} minutes from {curr_loc[2]}.", raw=True)
             else:
-                hope_speak(f"I found the location, but I couldn't calculate the exact travel time.")
+                hope_speak(f"I found the location, but I couldn't calculate the exact travel time.", raw=True)
         else:
-            hope_speak(f"I couldn't pinpoint the location for distance calculation, but I'm opening the map.")
+            hope_speak(f"I couldn't pinpoint the location for distance calculation, but I'm opening the map.", raw=True)
             
-        browser.get_directions(dest)
+        # 4. Ask "Shall I start the directions?" (clean intermediate confirmation prompt)
+        if confirm_action("Shall I start the directions, Sir?", raw=True):
+            # Final action completed - apply sarcastic/personality commentary here!
+            hope_speak("Starting navigation. Launching Google Maps.", query=query)
+            browser.get_directions(dest, origin=origin_name)
+        else:
+            hope_speak("Navigation cancelled. Standing by for your commands.", query=query)
         return
 
     # --- OFFLINE / SYSTEM ---
